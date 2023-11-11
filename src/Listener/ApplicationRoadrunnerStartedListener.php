@@ -57,16 +57,23 @@ final readonly class ApplicationRoadrunnerStartedListener implements EventListen
         $gcCollectStep = $this->httpRoadrunnerFacade->getGcCollectCyclesCount();
         while ($request = $worker->waitRequest()) {
             try {
-                $appRequest = $httpFoundationFactory->createRequest($request);
+                $isStreamed = \in_array(mb_strtolower($request->getMethod()), [
+                    'post', 'put', 'patch',
+                ]);
+
+                $appRequest = $httpFoundationFactory->createRequest($request, $isStreamed);
                 $appResponse = $this->httpFacade->execute($appRequest, false);
                 $worker->respond($httpMessageFactory->createResponse($appResponse));
             } catch (\Throwable $e) {
                 $worker->getWorker()->error((string) $e);
-            } finally {
-                if (++$i === $gcCollectStep) {
-                    gc_collect_cycles();
-                }
             }
+
+            if (++$i < $gcCollectStep) {
+                continue;
+            }
+
+            gc_collect_cycles();
+            $i = 0;
         }
     }
 
